@@ -1,5 +1,9 @@
 import type { CutRequirement } from "./cuts"
-import { DEFAULT_MAX_BOARD_LENGTH_INCHES, STOCK_PROFILES } from "./stock-profiles"
+import {
+  DEFAULT_MAX_BOARD_LENGTH_INCHES,
+  STOCK_PROFILES,
+  shortNominalName,
+} from "./stock-profiles"
 
 /** Discriminator for material kinds. */
 export type MaterialType = "board" | "sheet"
@@ -19,6 +23,8 @@ export interface MaterialGroup {
   id: string
   /** User-editable label (e.g. "2x4 framing", "Plywood shelves"). */
   label: string
+  /** True once user manually edits label; stops auto-sync with board spec. */
+  isLabelUserDefined: boolean
   materialType: MaterialType
   /** Board spec id (STOCK_PROFILES). Used only when materialType === "board". */
   boardSpecId: string
@@ -49,15 +55,31 @@ function nextId(): string {
 /** First board spec id for defaults (e.g. "2x4"). */
 const DEFAULT_BOARD_SPEC_ID = STOCK_PROFILES[0]?.id ?? "2x4"
 
+export function getBoardGroupLabel(boardSpecId: string): string {
+  const profile = STOCK_PROFILES.find((p) => p.id === boardSpecId)
+  if (!profile) return "Board group"
+  const base = shortNominalName(profile.name).replaceAll("×", "x")
+  return /hardwood/i.test(profile.name) ? `${base} boards` : `${base} framing`
+}
+
 /**
  * Create a new board material group with default label and spec.
  */
-export function createBoardGroup(overrides?: Partial<Pick<MaterialGroup, "label" | "boardSpecId" | "maxLengthPreferenceInches">>): MaterialGroup {
+export function createBoardGroup(
+  overrides?: Partial<
+    Pick<
+      MaterialGroup,
+      "label" | "isLabelUserDefined" | "boardSpecId" | "maxLengthPreferenceInches"
+    >
+  >
+): MaterialGroup {
+  const boardSpecId = overrides?.boardSpecId ?? DEFAULT_BOARD_SPEC_ID
   return {
     id: nextId(),
-    label: overrides?.label ?? "2x4 framing",
+    label: overrides?.label ?? getBoardGroupLabel(boardSpecId),
+    isLabelUserDefined: overrides?.isLabelUserDefined ?? false,
     materialType: "board",
-    boardSpecId: overrides?.boardSpecId ?? DEFAULT_BOARD_SPEC_ID,
+    boardSpecId,
     maxLengthPreferenceInches: overrides?.maxLengthPreferenceInches ?? DEFAULT_MAX_BOARD_LENGTH_INCHES,
     cuts: [],
     draftCut: null,
@@ -72,10 +94,18 @@ export function createBoardGroup(overrides?: Partial<Pick<MaterialGroup, "label"
 /**
  * Create a new sheet (plywood) material group. No solver yet; collects width × height pieces.
  */
-export function createSheetGroup(overrides?: Partial<Pick<MaterialGroup, "label" | "sheetStockWidth" | "sheetStockHeight" | "sheetThickness">>): MaterialGroup {
+export function createSheetGroup(
+  overrides?: Partial<
+    Pick<
+      MaterialGroup,
+      "label" | "isLabelUserDefined" | "sheetStockWidth" | "sheetStockHeight" | "sheetThickness"
+    >
+  >
+): MaterialGroup {
   return {
     id: nextId(),
     label: overrides?.label ?? "Plywood",
+    isLabelUserDefined: overrides?.isLabelUserDefined ?? false,
     materialType: "sheet",
     boardSpecId: DEFAULT_BOARD_SPEC_ID,
     maxLengthPreferenceInches: DEFAULT_MAX_BOARD_LENGTH_INCHES,
@@ -107,5 +137,5 @@ export function mergeSheetPieces(pieces: SheetPiece[]): SheetPiece[] {
 
 /** Default first group for initial app state. */
 export function createDefaultGroup(): MaterialGroup {
-  return createBoardGroup({ label: "2x4 framing" })
+  return createBoardGroup()
 }

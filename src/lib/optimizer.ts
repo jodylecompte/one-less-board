@@ -5,23 +5,91 @@ export interface RequiredCut {
   quantity: number
 }
 
-/** A board in the scrap pile (length and quantity on hand). Material-aware: boards only for now. */
+/** A board in the scrap pile (length and quantity on hand). */
 export interface ScrapBoard {
+  nominalSizeId: string
   stockLength: number
   quantity: number
 }
 
-/** Merge scrap by stockLength (sum quantities), sort by length descending. */
+export interface ScrapSheet {
+  width: number
+  height: number
+  thickness: string
+  quantity: number
+}
+
+export type ScrapEntry =
+  | ({ materialType: "board" } & ScrapBoard)
+  | ({ materialType: "sheet" } & ScrapSheet)
+
+/** Merge board scrap by (nominalSizeId, stockLength), sum quantities, sort by nominal then length descending. */
 export function mergeScrapBoards(scrap: ScrapBoard[]): ScrapBoard[] {
-  const byLength = new Map<number, number>()
-  for (const { stockLength, quantity } of scrap) {
-    if (stockLength > 0 && quantity > 0 && Number.isFinite(stockLength) && Number.isInteger(quantity)) {
-      byLength.set(stockLength, (byLength.get(stockLength) ?? 0) + quantity)
+  const byKey = new Map<string, ScrapBoard>()
+  for (const { nominalSizeId, stockLength, quantity } of scrap) {
+    if (
+      !nominalSizeId ||
+      stockLength <= 0 ||
+      quantity <= 0 ||
+      !Number.isFinite(stockLength) ||
+      !Number.isInteger(quantity)
+    ) {
+      continue
+    }
+    const key = `${nominalSizeId}:${stockLength}`
+    const existing = byKey.get(key)
+    if (existing) {
+      existing.quantity += quantity
+    } else {
+      byKey.set(key, { nominalSizeId, stockLength, quantity })
     }
   }
-  return [...byLength.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([stockLength, quantity]) => ({ stockLength, quantity }))
+  return [...byKey.values()].sort((a, b) => {
+    if (a.nominalSizeId !== b.nominalSizeId) return a.nominalSizeId.localeCompare(b.nominalSizeId)
+    return b.stockLength - a.stockLength
+  })
+}
+
+/** Merge sheet scrap by (width, height, thickness), sum quantities, sort by area descending. */
+export function mergeScrapSheets(scrap: ScrapSheet[]): ScrapSheet[] {
+  const byKey = new Map<string, ScrapSheet>()
+  for (const { width, height, thickness, quantity } of scrap) {
+    if (
+      width <= 0 ||
+      height <= 0 ||
+      !thickness.trim() ||
+      quantity <= 0 ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      !Number.isInteger(quantity)
+    ) {
+      continue
+    }
+    const normalizedThickness = thickness.trim()
+    const key = `${width}:${height}:${normalizedThickness}`
+    const existing = byKey.get(key)
+    if (existing) {
+      existing.quantity += quantity
+    } else {
+      byKey.set(key, { width, height, thickness: normalizedThickness, quantity })
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.width * b.height - a.width * a.height)
+}
+
+/** Merge all scrap entries by their material-specific identity. */
+export function mergeScrapEntries(scrap: ScrapEntry[]): ScrapEntry[] {
+  const board = mergeScrapBoards(
+    scrap
+      .filter((s): s is Extract<ScrapEntry, { materialType: "board" }> => s.materialType === "board")
+      .map(({ nominalSizeId, stockLength, quantity }) => ({ nominalSizeId, stockLength, quantity }))
+  ).map((s) => ({ ...s, materialType: "board" as const }))
+  const sheet = mergeScrapSheets(
+    scrap
+      .filter((s): s is Extract<ScrapEntry, { materialType: "sheet" }> => s.materialType === "sheet")
+      .map(({ width, height, thickness, quantity }) => ({ width, height, thickness, quantity }))
+  ).map((s) => ({ ...s, materialType: "sheet" as const }))
+  return [...board, ...sheet]
 }
 
 /** Minimum leftover length (inches) to count as reusable scrap; below this is waste. */
@@ -46,7 +114,7 @@ export interface OptimizerInput {
 }
 
 export interface OptimizeCutsOptions {
-  /** Board scrap pile (boards only). Used first before new boards. */
+  /** Board scrap pile (already filtered/matched by board spec). Used first before new boards. */
   scrap?: ScrapBoard[]
   /** Preferred max board length (inches). Prefer boards ≤ this; if a cut exceeds it, use smallest that fits. */
   preferredMaxLengthInches?: number

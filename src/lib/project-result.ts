@@ -1,6 +1,6 @@
 import type { CutRequirement } from "./cuts"
 import type { MaterialGroup, SheetPiece } from "./material-groups"
-import { optimizeCuts, type OptimizedBoard, type ScrapBoard } from "./optimizer"
+import { optimizeCuts, type OptimizedBoard, type ScrapEntry } from "./optimizer"
 import { STOCK_PROFILES, NOMINAL_SIZE_ORDER } from "./stock-profiles"
 
 /** Shopping list entry for one nominal size (board spec): what to buy. */
@@ -27,6 +27,7 @@ export interface CutListRecapGroup {
 export interface DiagramGroup {
   groupId: string
   groupLabel: string
+  boardSpecId?: string
   boards: OptimizedBoard[]
   kerfInches: number
   /** Preferred max length (inches) for board groups; used to show "exceeds preference" in UI. */
@@ -58,8 +59,8 @@ export interface ProjectResult {
 }
 
 export interface GenerateProjectResultOptions {
-  /** Global scrap inventory (boards). Used when "Use scrap inventory" is on. Default []. */
-  scrap?: ScrapBoard[]
+  /** Global scrap inventory (material-aware). Used when "Use scrap inventory" is on. Default []. */
+  scrap?: ScrapEntry[]
 }
 
 /**
@@ -92,6 +93,7 @@ export function generateProjectResult(
       diagrams.push({
         groupId: group.id,
         groupLabel: group.label,
+        boardSpecId: undefined,
         boards: [],
         kerfInches: 0,
         materialType: "sheet",
@@ -116,6 +118,7 @@ export function generateProjectResult(
       diagrams.push({
         groupId: group.id,
         groupLabel: group.label,
+        boardSpecId: boardSpec?.id,
         boards: [],
         kerfInches: boardSpec?.kerf ?? 0,
         preferredMaxLengthInches: group.maxLengthPreferenceInches,
@@ -125,12 +128,17 @@ export function generateProjectResult(
     }
 
     const boards = optimizeCuts(boardCuts, boardSpec, {
-      scrap,
+      scrap: scrap
+        .filter(
+          (s): s is Extract<ScrapEntry, { materialType: "board" }> =>
+            s.materialType === "board" && s.nominalSizeId === boardSpec.id
+        ),
       preferredMaxLengthInches: group.maxLengthPreferenceInches,
     })
     diagrams.push({
       groupId: group.id,
       groupLabel: group.label,
+      boardSpecId: boardSpec.id,
       boards,
       kerfInches: boardSpec.kerf,
       preferredMaxLengthInches: group.maxLengthPreferenceInches,
