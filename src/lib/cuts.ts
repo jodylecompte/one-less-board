@@ -1,19 +1,51 @@
+import type { MaterialType } from "./stock-profiles"
+
+const DEFAULT_MATERIAL_TYPE: MaterialType = "board"
+
 export interface CutRequirement {
   length: number
   quantity: number
+  /** Material kind; defaults to 'board' when omitted */
+  materialType?: MaterialType
 }
 
-/** Merge cuts by length (sum quantities) and sort by length descending */
+/** Normalize materialType to a concrete value (default 'board') */
+export function normalizeMaterialType(
+  cut: CutRequirement
+): CutRequirement & { materialType: MaterialType } {
+  return {
+    ...cut,
+    materialType: cut.materialType ?? DEFAULT_MATERIAL_TYPE,
+  }
+}
+
+/** Merge cuts by (length, materialType): sum quantities, sort by length descending */
 export function mergeCuts(cuts: CutRequirement[]): CutRequirement[] {
-  const byLength = new Map<number, number>()
-  for (const { length, quantity } of cuts) {
-    if (isValidLength(length) && isValidQuantity(quantity)) {
-      byLength.set(length, (byLength.get(length) ?? 0) + quantity)
+  const key = (length: number, materialType: MaterialType) =>
+    `${length}:${materialType}`
+  const byKey = new Map<string, { length: number; quantity: number; materialType: MaterialType }>()
+  for (const c of cuts) {
+    if (!isValidLength(c.length) || !isValidQuantity(c.quantity)) continue
+    const mt = c.materialType ?? DEFAULT_MATERIAL_TYPE
+    const k = key(c.length, mt)
+    const existing = byKey.get(k)
+    if (existing) {
+      existing.quantity += c.quantity
+    } else {
+      byKey.set(k, { length: c.length, quantity: c.quantity, materialType: mt })
     }
   }
-  return [...byLength.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([length, quantity]) => ({ length, quantity }))
+  return [...byKey.values()]
+    .sort((a, b) => b.length - a.length)
+    .map(({ length, quantity, materialType }) => ({ length, quantity, materialType }))
+}
+
+/** Return cuts for a single material type (e.g. for optimizer input). Defaults missing materialType to 'board'. */
+export function getCutsForMaterial(
+  cuts: CutRequirement[],
+  materialType: MaterialType
+): CutRequirement[] {
+  return cuts.filter((c) => (c.materialType ?? DEFAULT_MATERIAL_TYPE) === materialType)
 }
 
 export function isValidLength(value: unknown): value is number {

@@ -14,3 +14,23 @@
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* Print: clean, shop-usable layout */
+@media print {
+  body {
+    background: white;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Ensure text and borders print dark */
+  .print\:text-slate-900 { color: #0f172a !important; }
+  .print\:text-slate-700 { color: #334155 !important; }
+  .print\:text-slate-600 { color: #475569 !important; }
+  .print\:border-slate-300 { border-color: #cbd5e1 !important; }
+  .print\:bg-slate-100 { background-color: #f1f5f9 !important; }
+  /* Avoid breaking inside sections and cards */
+  .print\:break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
