@@ -1,6 +1,6 @@
 import type { CutRequirement } from "./cuts"
-import type { MaterialGroup } from "./material-groups"
-import { optimizeCuts, type OptimizedBoard } from "./optimizer"
+import type { MaterialGroup, SheetPiece } from "./material-groups"
+import { optimizeCuts, type OptimizedBoard, type ScrapBoard } from "./optimizer"
 import { STOCK_PROFILES, NOMINAL_SIZE_ORDER } from "./stock-profiles"
 
 /** Shopping list entry for one nominal size (board spec): what to buy. */
@@ -17,7 +17,10 @@ export interface ShoppingListEntry {
 export interface CutListRecapGroup {
   groupId: string
   groupLabel: string
+  /** Board groups: length-based cuts. */
   cuts: CutRequirement[]
+  /** Sheet groups: width × height pieces. Empty for board groups. */
+  sheetPieces: SheetPiece[]
 }
 
 /** Cut diagrams for one material group: visuals. */
@@ -26,39 +29,88 @@ export interface DiagramGroup {
   groupLabel: string
   boards: OptimizedBoard[]
   kerfInches: number
+  /** Preferred max length (inches) for board groups; used to show "exceeds preference" in UI. */
+  preferredMaxLengthInches?: number
+  /** When "sheet", show "Optimization coming soon" instead of board count. */
+  materialType?: "board" | "sheet"
+}
+
+/** Sheet/shopping entry: plywood group, sheet count only (no optimization yet). */
+export interface ShoppingListSheetEntry {
+  groupId: string
+  groupLabel: string
+  sheetCount: number
+  sheetWidth: number
+  sheetHeight: number
+  thickness: string
 }
 
 /** Aggregated project-level result. */
 export interface ProjectResult {
-  /** What to buy, grouped by nominal size. */
+  /** What to buy (boards), grouped by nominal size. */
   shoppingList: ShoppingListEntry[]
+  /** What to buy (sheets), one entry per plywood group. Sheet count only; optimization coming soon. */
+  shoppingListSheets: ShoppingListSheetEntry[]
   /** What the user entered, grouped by material group. */
   cutListRecap: CutListRecapGroup[]
   /** Cut diagrams, grouped by material group. */
   diagrams: DiagramGroup[]
 }
 
+export interface GenerateProjectResultOptions {
+  /** Global scrap inventory (boards). Used when "Use scrap inventory" is on. Default []. */
+  scrap?: ScrapBoard[]
+}
+
 /**
  * Run optimization per group and aggregate into a single project result.
  * Each group is optimized independently; output is unified.
+ * Pass options.scrap when the user has "Use scrap inventory" enabled.
  */
-export function generateProjectResult(groups: MaterialGroup[]): ProjectResult {
+export function generateProjectResult(
+  groups: MaterialGroup[],
+  options?: GenerateProjectResultOptions
+): ProjectResult {
+  const scrap = options?.scrap ?? []
   const shoppingByNominal = new Map<
     string,
     { name: string; byLength: Map<number, number> }
   >()
+  const shoppingListSheets: ShoppingListSheetEntry[] = []
   const cutListRecap: CutListRecapGroup[] = []
   const diagrams: DiagramGroup[] = []
 
   for (const group of groups) {
-    const boardSpec = STOCK_PROFILES.find((p) => p.id === group.boardSpecId)
-    const boardCuts = group.cuts.filter((c) => (c.materialType ?? "board") === "board")
-
     cutListRecap.push({
       groupId: group.id,
       groupLabel: group.label,
-      cuts: [...group.cuts],
+      cuts: group.materialType === "board" ? [...group.cuts] : [],
+      sheetPieces: group.materialType === "sheet" ? [...group.sheetPieces] : [],
     })
+
+    if (group.materialType === "sheet") {
+      diagrams.push({
+        groupId: group.id,
+        groupLabel: group.label,
+        boards: [],
+        kerfInches: 0,
+        materialType: "sheet",
+      })
+      if (group.sheetPieces.length > 0) {
+        shoppingListSheets.push({
+          groupId: group.id,
+          groupLabel: group.label,
+          sheetCount: 0,
+          sheetWidth: group.sheetStockWidth,
+          sheetHeight: group.sheetStockHeight,
+          thickness: group.sheetThickness,
+        })
+      }
+      continue
+    }
+
+    const boardSpec = STOCK_PROFILES.find((p) => p.id === group.boardSpecId)
+    const boardCuts = group.cuts.filter((c) => (c.materialType ?? "board") === "board")
 
     if (!boardSpec || boardCuts.length === 0) {
       diagrams.push({
@@ -66,16 +118,23 @@ export function generateProjectResult(groups: MaterialGroup[]): ProjectResult {
         groupLabel: group.label,
         boards: [],
         kerfInches: boardSpec?.kerf ?? 0,
+        preferredMaxLengthInches: group.maxLengthPreferenceInches,
+        materialType: "board",
       })
       continue
     }
 
-    const boards = optimizeCuts(boardCuts, boardSpec, { scrap: group.scrap })
+    const boards = optimizeCuts(boardCuts, boardSpec, {
+      scrap,
+      preferredMaxLengthInches: group.maxLengthPreferenceInches,
+    })
     diagrams.push({
       groupId: group.id,
       groupLabel: group.label,
       boards,
       kerfInches: boardSpec.kerf,
+      preferredMaxLengthInches: group.maxLengthPreferenceInches,
+      materialType: "board",
     })
 
     const toPurchase = boards.filter((b) => b.source === "new")
@@ -108,6 +167,7 @@ export function generateProjectResult(groups: MaterialGroup[]): ProjectResult {
 
   return {
     shoppingList,
+    shoppingListSheets,
     cutListRecap,
     diagrams,
   }

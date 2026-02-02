@@ -16,6 +16,10 @@
 }
 
 /* Print: clean, shop-usable layout */
+@page {
+  margin: 0.25in;
+}
+
 @media print {
   body {
     background: white;
@@ -32,5 +36,24 @@
   .print\:break-inside-avoid {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+  /* Extra padding so content and last diagrams aren’t cut off */
+  .print\:safe-inset {
+    padding: 0;
+  }
+  /* Hide interior borders in print to reduce cut-off and clutter */
+  .print-results th,
+  .print-results td,
+  .print-results tr,
+  .print-results thead tr,
+  .print-results tbody tr,
+  .print-results [class*="border-b"],
+  .print-results li[class*="border"],
+  .print-results .border {
+    border-width: 0 !important;
+    border: none !important;
+  }
+  .print-results {
+    border: none !important;
   }
 }

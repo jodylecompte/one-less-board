@@ -48,6 +48,8 @@ export interface OptimizerInput {
 export interface OptimizeCutsOptions {
   /** Board scrap pile (boards only). Used first before new boards. */
   scrap?: ScrapBoard[]
+  /** Preferred max board length (inches). Prefer boards ≤ this; if a cut exceeds it, use smallest that fits. */
+  preferredMaxLengthInches?: number
 }
 
 /**
@@ -63,6 +65,7 @@ export function optimizeCuts(
     case "board":
       return optimizeBoardCuts(requiredCuts, profile as BoardSpec, {
         scrap: options?.scrap,
+        preferredMaxLengthInches: options?.preferredMaxLengthInches,
       })
     case "sheet":
       // Extension point: implement optimizeSheetCuts(requiredCuts, profile as SheetSpec, options)
@@ -153,15 +156,23 @@ function placeCutsOntoBoards(
 
 /**
  * Place unassigned cuts onto new boards from allowedLengths. Same greedy algorithm.
+ * Prefers boards ≤ preferredMaxLengthInches when multiple lengths fit; if cut exceeds preferred max, uses smallest that fits.
  */
 function placeCutsOntoNewBoards(
   sortedCuts: number[],
   allowedLengths: number[],
-  kerfInches: number
+  kerfInches: number,
+  preferredMaxLengthInches?: number
 ): { stockLength: number; cuts: number[] }[] {
   if (allowedLengths.length === 0 || sortedCuts.length === 0) return []
-  const sortedStock = [...allowedLengths].sort((a, b) => a - b)
-  const minStock = Math.min(...sortedStock)
+  const preferred = preferredMaxLengthInches ?? Infinity
+  const sortedStock = [...allowedLengths].sort((a, b) => {
+    const aPrefer = a <= preferred ? 0 : 1
+    const bPrefer = b <= preferred ? 0 : 1
+    if (aPrefer !== bPrefer) return aPrefer - bPrefer
+    return a - b
+  })
+  const minStock = Math.min(...allowedLengths)
   const boards: { stockLength: number; cuts: number[] }[] = []
 
   function usedLength(cuts: number[]): number {
@@ -214,7 +225,7 @@ function placeCutsOntoNewBoards(
 export function optimizeBoardCuts(
   requiredCuts: RequiredCut[],
   spec: BoardSpec,
-  options?: { scrap?: ScrapBoard[] }
+  options?: { scrap?: ScrapBoard[]; preferredMaxLengthInches?: number }
 ): OptimizedBoard[] {
   const { allowedLengths, kerf } = spec
   const kerfInches = kerf
@@ -253,8 +264,13 @@ export function optimizeBoardCuts(
     result.push(toOptimizedBoard(board, "scrap", kerfInches))
   }
 
-  // Phase 2: remaining cuts onto new boards
-  const newBoards = placeCutsOntoNewBoards(unassigned, allowedLengths, kerfInches)
+  // Phase 2: remaining cuts onto new boards (prefer lengths ≤ preferredMaxLengthInches)
+  const newBoards = placeCutsOntoNewBoards(
+    unassigned,
+    allowedLengths,
+    kerfInches,
+    options?.preferredMaxLengthInches
+  )
   for (const board of newBoards) {
     result.push(toOptimizedBoard(board, "new", kerfInches))
   }

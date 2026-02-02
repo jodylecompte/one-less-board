@@ -64,6 +64,20 @@ export const STOCK_PROFILES: BoardSpec[] = [
   },
 ]
 
+/** Default kerf in inches (1/8″). */
+export const DEFAULT_KERF_INCHES = 0.125
+
+/** Default max board length in inches (8 ft). */
+export const DEFAULT_MAX_BOARD_LENGTH_INCHES = 96
+
+/** Board length preference options (ft → inches). Max length is a preference, not a hard limit. */
+export const BOARD_LENGTH_PREFERENCE_OPTIONS: { feet: number; inches: number }[] = [
+  { feet: 8, inches: 96 },
+  { feet: 10, inches: 120 },
+  { feet: 12, inches: 144 },
+  { feet: 16, inches: 192 },
+]
+
 /** Format length in inches as feet (e.g. 96 → "8 ft") */
 export function formatStockLength(inches: number): string {
   const feet = inches / 12
