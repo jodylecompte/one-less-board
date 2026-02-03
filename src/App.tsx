@@ -278,8 +278,7 @@ function App() {
                 Cross-cut optimization for lumber
               </p>
               <p className="text-sm mt-5 sm:text-base text-slate-600 dark:text-slate-400 mt-1">
-                Saving just one board on today's project means you have an extra
-                board for tomorrow
+                Save one board today. Have one tomorrow.
               </p>
             </div>
             <div className="flex items-center justify-center lg:justify-start">
