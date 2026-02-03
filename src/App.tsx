@@ -272,10 +272,14 @@ function App() {
           <header className="text-center lg:text-left lg:pt-1 space-y-3">
             <div>
               <h1 className="text-2xl sm:text-3xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100">
-                Cut List Optimizer
+                One Less Board
               </h1>
               <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
                 Cross-cut optimization for lumber
+              </p>
+              <p className="text-sm mt-5 sm:text-base text-slate-600 dark:text-slate-400 mt-1">
+                Saving just one board on today's project means you have an extra
+                board for tomorrow
               </p>
             </div>
             <div className="flex items-center justify-center lg:justify-start">

@@ -20,6 +20,7 @@ export function ScrapInventoryModal({
     length: string
     quantity: string
   } | null>(null)
+  const [draftError, setDraftError] = useState<string | null>(null)
 
   const boardEntries = scrapInventory.filter(
     (s): s is Extract<ScrapEntry, { materialType: "board" }> => s.materialType === "board"
@@ -37,7 +38,18 @@ export function ScrapInventoryModal({
     if (!boardDraft) return
     const stockLength = parseLength(boardDraft.length)
     const quantity = parseQuantity(boardDraft.quantity)
-    if (!boardDraft.nominalSizeId || !isValidLength(stockLength) || !isValidQuantity(quantity)) return
+    if (!boardDraft.nominalSizeId) {
+      setDraftError("Board size is required.")
+      return
+    }
+    if (!isValidLength(stockLength)) {
+      setDraftError("Length is required and must be greater than 0.")
+      return
+    }
+    if (!isValidQuantity(quantity)) {
+      setDraftError("Quantity is required and must be a whole number.")
+      return
+    }
     setScrapInventory((prev) =>
       mergeScrapEntries([
         ...prev,
@@ -45,6 +57,7 @@ export function ScrapInventoryModal({
       ])
     )
     setBoardDraft((d) => (d ? { ...d, length: "", quantity: "" } : d))
+    setDraftError(null)
   }
 
   const removeBoardScrap = (nominalSizeId: string, stockLength: number) => {
@@ -178,9 +191,10 @@ export function ScrapInventoryModal({
                           <td className="py-2 px-4">
                             <select
                               value={boardDraft.nominalSizeId}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setBoardDraft((d) => (d ? { ...d, nominalSizeId: e.target.value } : d))
-                              }
+                                setDraftError(null)
+                              }}
                               className={`w-full min-w-[8rem] px-2 py-1.5 text-sm ${fieldClassName}`}
                               aria-label="Nominal size"
                             >
@@ -195,11 +209,15 @@ export function ScrapInventoryModal({
                             <input
                               type="text"
                               inputMode="decimal"
-                              placeholder="e.g. 96"
+                              placeholder='Required (e.g. 96")'
                               value={boardDraft.length}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setBoardDraft((d) => (d ? { ...d, length: e.target.value } : null))
-                              }
+                                setDraftError(null)
+                              }}
+                              onBlur={() => {
+                                if (!boardDraft.length.trim()) setDraftError("Length is required.")
+                              }}
                               className={`w-full max-w-[6rem] px-2 py-1.5 text-sm ${fieldClassName}`}
                               aria-label="Length (inches)"
                               autoFocus
@@ -209,13 +227,17 @@ export function ScrapInventoryModal({
                             <input
                               type="text"
                               inputMode="numeric"
-                              placeholder="1"
+                              placeholder="Required"
                               value={boardDraft.quantity}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setBoardDraft((d) =>
                                   d ? { ...d, quantity: e.target.value.replace(/\D/g, "") } : null
                                 )
-                              }
+                                setDraftError(null)
+                              }}
+                              onBlur={() => {
+                                if (!boardDraft.quantity.trim()) setDraftError("Quantity is required.")
+                              }}
                               className={`w-full max-w-[4rem] px-2 py-1.5 text-sm ${fieldClassName}`}
                               aria-label="Quantity"
                             />
@@ -224,12 +246,7 @@ export function ScrapInventoryModal({
                             <button
                               type="button"
                               onClick={addBoardDraft}
-                              disabled={
-                                !boardDraft.nominalSizeId ||
-                                !isValidLength(parseLength(boardDraft.length)) ||
-                                !isValidQuantity(parseQuantity(boardDraft.quantity))
-                              }
-                              className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="p-1.5 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                               aria-label="Add"
                             >
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -238,7 +255,10 @@ export function ScrapInventoryModal({
                             </button>
                             <button
                               type="button"
-                              onClick={() => setBoardDraft(null)}
+                              onClick={() => {
+                                setBoardDraft(null)
+                                setDraftError(null)
+                              }}
                               className="p-1.5 rounded text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600"
                               aria-label="Cancel"
                             >
@@ -254,6 +274,14 @@ export function ScrapInventoryModal({
                 </tbody>
               </table>
             </div>
+            {boardDraft && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Length and quantity are required to add board scrap.
+              </p>
+            )}
+            {draftError && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{draftError}</p>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
               {!boardDraft ? (
                 <button

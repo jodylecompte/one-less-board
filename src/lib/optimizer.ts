@@ -23,7 +23,7 @@ export type ScrapEntry =
   | ({ materialType: "board" } & ScrapBoard)
   | ({ materialType: "sheet" } & ScrapSheet)
 
-/** Merge board scrap by (nominalSizeId, stockLength), sum quantities, sort by nominal then length descending. */
+/** Merge board scrap by (nominalSizeId, stockLength), sum quantities, preserve first-seen order. */
 export function mergeScrapBoards(scrap: ScrapBoard[]): ScrapBoard[] {
   const byKey = new Map<string, ScrapBoard>()
   for (const { nominalSizeId, stockLength, quantity } of scrap) {
@@ -44,13 +44,10 @@ export function mergeScrapBoards(scrap: ScrapBoard[]): ScrapBoard[] {
       byKey.set(key, { nominalSizeId, stockLength, quantity })
     }
   }
-  return [...byKey.values()].sort((a, b) => {
-    if (a.nominalSizeId !== b.nominalSizeId) return a.nominalSizeId.localeCompare(b.nominalSizeId)
-    return b.stockLength - a.stockLength
-  })
+  return [...byKey.values()]
 }
 
-/** Merge sheet scrap by (width, height, thickness), sum quantities, sort by area descending. */
+/** Merge sheet scrap by (width, height, thickness), sum quantities, preserve first-seen order. */
 export function mergeScrapSheets(scrap: ScrapSheet[]): ScrapSheet[] {
   const byKey = new Map<string, ScrapSheet>()
   for (const { width, height, thickness, quantity } of scrap) {
@@ -74,7 +71,7 @@ export function mergeScrapSheets(scrap: ScrapSheet[]): ScrapSheet[] {
       byKey.set(key, { width, height, thickness: normalizedThickness, quantity })
     }
   }
-  return [...byKey.values()].sort((a, b) => b.width * b.height - a.width * a.height)
+  return [...byKey.values()]
 }
 
 /** Merge all scrap entries by their material-specific identity. */
