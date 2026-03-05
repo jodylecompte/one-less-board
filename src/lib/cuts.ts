@@ -61,10 +61,39 @@ export function isValidQuantity(value: unknown): value is number {
   )
 }
 
-/** Parse string to number; returns NaN if invalid */
+/**
+ * Parse a length string to inches. Accepts:
+ *   - Decimal: "48", "48.5"
+ *   - Simple fraction: "1/2", "3/4"
+ *   - Mixed number (space or hyphen separator): "3 1/2", "47 3/4", "3-1/2"
+ * Returns NaN if the string is not a recognised format or results in a non-finite value.
+ */
 export function parseLength(input: string): number {
-  const n = parseFloat(input.trim())
-  return n
+  const s = input.trim()
+  if (!s) return NaN
+
+  // Mixed number: whole + fraction, separated by space(s) or a hyphen
+  // e.g. "3 1/2", "47 3/4", "3-1/2"
+  const mixed = s.match(/^(\d+)\s*[-\s]\s*(\d+)\s*\/\s*(\d+)$/)
+  if (mixed) {
+    const whole = parseInt(mixed[1], 10)
+    const num = parseInt(mixed[2], 10)
+    const den = parseInt(mixed[3], 10)
+    if (den === 0) return NaN
+    return whole + num / den
+  }
+
+  // Simple fraction: "1/2", "3/4"
+  const frac = s.match(/^(\d+)\s*\/\s*(\d+)$/)
+  if (frac) {
+    const num = parseInt(frac[1], 10)
+    const den = parseInt(frac[2], 10)
+    if (den === 0) return NaN
+    return num / den
+  }
+
+  // Plain decimal / integer
+  return parseFloat(s)
 }
 
 export function parseQuantity(input: string): number {

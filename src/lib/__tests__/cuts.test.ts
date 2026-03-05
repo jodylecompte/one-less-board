@@ -95,9 +95,37 @@ describe("parseLength", () => {
     expect(parseLength("")).toBeNaN()
   })
 
-  it("parses only the leading number for mixed strings", () => {
-    // parseFloat stops at first non-numeric character
-    expect(parseLength("96abc")).toBe(96)
+  // Fraction support
+  it("parses simple fractions", () => {
+    expect(parseLength("1/2")).toBeCloseTo(0.5)
+    expect(parseLength("3/4")).toBeCloseTo(0.75)
+    expect(parseLength("1/4")).toBeCloseTo(0.25)
+    expect(parseLength("3/8")).toBeCloseTo(0.375)
+  })
+
+  it("parses mixed numbers with space separator", () => {
+    expect(parseLength("3 1/2")).toBeCloseTo(3.5)
+    expect(parseLength("47 3/4")).toBeCloseTo(47.75)
+    expect(parseLength("12 1/4")).toBeCloseTo(12.25)
+  })
+
+  it("parses mixed numbers with hyphen separator", () => {
+    expect(parseLength("3-1/2")).toBeCloseTo(3.5)
+    expect(parseLength("47-3/4")).toBeCloseTo(47.75)
+  })
+
+  it("trims whitespace around fraction expressions", () => {
+    expect(parseLength("  3 1/2  ")).toBeCloseTo(3.5)
+    expect(parseLength("  1/2  ")).toBeCloseTo(0.5)
+  })
+
+  it("returns NaN for division by zero", () => {
+    expect(parseLength("1/0")).toBeNaN()
+    expect(parseLength("3 1/0")).toBeNaN()
+  })
+
+  it("returns NaN for empty string", () => {
+    expect(parseLength("")).toBeNaN()
   })
 })
 

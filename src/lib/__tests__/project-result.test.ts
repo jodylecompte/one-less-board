@@ -182,6 +182,67 @@ describe("generateProjectResult", () => {
     })
   })
 
+  describe("kerf override", () => {
+    it("uses spec's default kerf when no override", () => {
+      const group = boardGroup({
+        boardSpecId: "2x4",
+        cuts: [{ length: 48, quantity: 1 }],
+      })
+      const result = generateProjectResult([group])
+      expect(result.diagrams[0].kerfInches).toBe(0.125)
+    })
+
+    it("uses kerfOverrideInches when set", () => {
+      const group = boardGroup({
+        boardSpecId: "2x4",
+        kerfOverrideInches: 0.09,
+        cuts: [{ length: 48, quantity: 1 }],
+      })
+      const result = generateProjectResult([group])
+      expect(result.diagrams[0].kerfInches).toBe(0.09)
+    })
+
+    it("applies kerf override to the optimization (remainingWaste reflects overridden kerf)", () => {
+      // Two 40" cuts with kerf=0: used = 80, remaining = 16
+      // Two 40" cuts with kerf=0.125: used = 80.125, remaining = 15.875
+      const group = boardGroup({
+        boardSpecId: "2x4",
+        kerfOverrideInches: 0,
+        cuts: [{ length: 40, quantity: 2 }],
+      })
+      const result = generateProjectResult([group])
+      const board = result.diagrams[0].boards[0]
+      expect(board.remainingWaste).toBeCloseTo(16)
+    })
+  })
+
+  describe("custom allowed lengths", () => {
+    it("extends allowed lengths so cuts use custom stock when beneficial", () => {
+      // A group with only 96" spec but custom 60" length added
+      // A 55" cut should fit on the custom 60" board (shorter than opening a 96" board)
+      const group = boardGroup({
+        boardSpecId: "2x4",
+        customAllowedLengths: [60],
+        cuts: [{ length: 55, quantity: 1 }],
+      })
+      const result = generateProjectResult([group])
+      // The optimizer should prefer the 60" board (shortest that fits)
+      expect(result.diagrams[0].boards[0].stockLength).toBe(60)
+    })
+
+    it("deduplicates custom lengths that overlap with spec lengths", () => {
+      // 96 is already in spec; adding it again shouldn't duplicate
+      const group = boardGroup({
+        boardSpecId: "2x4",
+        customAllowedLengths: [96, 168],
+        cuts: [{ length: 48, quantity: 1 }],
+      })
+      // Should not crash or produce weird results
+      const result = generateProjectResult([group])
+      expect(result.diagrams[0].boards.length).toBeGreaterThan(0)
+    })
+  })
+
   describe("scrap handling", () => {
     it("boards with source 'scrap' are excluded from shopping list count", () => {
       const group = boardGroup({

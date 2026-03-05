@@ -33,7 +33,7 @@ describe("createBoardGroup", () => {
 
   it("uses default board spec id (first in STOCK_PROFILES)", () => {
     const group = createBoardGroup()
-    expect(group.boardSpecId).toBe("2x4")
+    expect(group.boardSpecId).toBe("1x4")
   })
 
   it("applies boardSpecId override", () => {
@@ -41,7 +41,12 @@ describe("createBoardGroup", () => {
     expect(group.boardSpecId).toBe("2x6")
   })
 
-  it("auto-generates label from boardSpecId when not user-defined", () => {
+  it("auto-generates label from default boardSpecId", () => {
+    const group = createBoardGroup()
+    expect(group.label).toBe("1x4 framing")
+  })
+
+  it("auto-generates label from overridden boardSpecId", () => {
     const group = createBoardGroup({ boardSpecId: "2x6" })
     expect(group.label).toBe("2x6 framing")
   })
@@ -69,6 +74,26 @@ describe("createBoardGroup", () => {
   it("applies maxLengthPreferenceInches override", () => {
     const group = createBoardGroup({ maxLengthPreferenceInches: 120 })
     expect(group.maxLengthPreferenceInches).toBe(120)
+  })
+
+  it("defaults kerfOverrideInches to null", () => {
+    const group = createBoardGroup()
+    expect(group.kerfOverrideInches).toBeNull()
+  })
+
+  it("applies kerfOverrideInches override", () => {
+    const group = createBoardGroup({ kerfOverrideInches: 0.09 })
+    expect(group.kerfOverrideInches).toBe(0.09)
+  })
+
+  it("defaults customAllowedLengths to empty array", () => {
+    const group = createBoardGroup()
+    expect(group.customAllowedLengths).toEqual([])
+  })
+
+  it("applies customAllowedLengths override", () => {
+    const group = createBoardGroup({ customAllowedLengths: [168, 204] })
+    expect(group.customAllowedLengths).toEqual([168, 204])
   })
 
   it("starts with empty cuts and no draftCut", () => {

@@ -12,6 +12,7 @@ import {
   STOCK_PROFILES,
   DEFAULT_MAX_BOARD_LENGTH_INCHES,
   BOARD_LENGTH_PREFERENCE_OPTIONS,
+  formatStockLength,
 } from "../lib/stock-profiles"
 import { getBoardGroupLabel, type MaterialGroup } from "../lib/material-groups"
 import {
@@ -32,6 +33,56 @@ export function MaterialGroupSection({
   onRemove: () => void
   canRemove: boolean
 }) {
+  const currentSpec = STOCK_PROFILES.find((p) => p.id === group.boardSpecId)
+  const defaultKerf = currentSpec?.kerf ?? 0.125
+
+  // Local state for kerf input (committed on blur)
+  const [kerfInput, setKerfInput] = useState(
+    group.kerfOverrideInches != null ? String(group.kerfOverrideInches) : ""
+  )
+  const prevKerfOverride = useRef(group.kerfOverrideInches)
+  useEffect(() => {
+    if (prevKerfOverride.current !== group.kerfOverrideInches) {
+      prevKerfOverride.current = group.kerfOverrideInches
+      setKerfInput(group.kerfOverrideInches != null ? String(group.kerfOverrideInches) : "")
+    }
+  }, [group.kerfOverrideInches])
+
+  const handleKerfBlur = () => {
+    const v = parseFloat(kerfInput.trim())
+    if (kerfInput.trim() === "" || isNaN(v) || v <= 0) {
+      onUpdateGroup((g) => ({ ...g, kerfOverrideInches: null }))
+      setKerfInput("")
+    } else {
+      onUpdateGroup((g) => ({ ...g, kerfOverrideInches: v }))
+      setKerfInput(String(v))
+    }
+  }
+
+  // Local state for custom length input
+  const [customLenInput, setCustomLenInput] = useState("")
+  const customLenValid = (() => {
+    const v = parseLength(customLenInput)
+    return isValidLength(v)
+  })()
+
+  const addCustomLength = () => {
+    const v = parseLength(customLenInput)
+    if (!isValidLength(v)) return
+    onUpdateGroup((g) => ({
+      ...g,
+      customAllowedLengths: [...new Set([...g.customAllowedLengths, v])].sort((a, b) => a - b),
+    }))
+    setCustomLenInput("")
+  }
+
+  const removeCustomLength = (len: number) => {
+    onUpdateGroup((g) => ({
+      ...g,
+      customAllowedLengths: g.customAllowedLengths.filter((l) => l !== len),
+    }))
+  }
+
   return (
     <section className="rounded-xl bg-white/90 dark:bg-slate-800/60 overflow-hidden shadow-sm">
       <div className="px-5 pt-5 pb-3">
@@ -118,8 +169,37 @@ export function MaterialGroupSection({
               </Select.Portal>
             </Select.Root>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-slate-500 dark:text-slate-400" htmlFor={`kerf-${group.id}`}>
+              Kerf:
+            </label>
+            <input
+              id={`kerf-${group.id}`}
+              type="text"
+              inputMode="decimal"
+              value={kerfInput}
+              placeholder={String(defaultKerf)}
+              onChange={(e) => setKerfInput(e.target.value)}
+              onBlur={handleKerfBlur}
+              className={`w-20 px-2 py-1 text-xs ${fieldClassName}`}
+              aria-label="Kerf override in inches"
+            />
+            <span className="text-xs text-slate-400 dark:text-slate-500">in</span>
+            {group.kerfOverrideInches != null && (
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateGroup((g) => ({ ...g, kerfOverrideInches: null }))
+                  setKerfInput("")
+                }}
+                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline"
+              >
+                reset to default
+              </button>
+            )}
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Sets allowed lengths and kerf (default 1/8″). Required to generate.
+            Sets allowed lengths. Required to generate.
           </p>
         </div>
 
@@ -158,6 +238,58 @@ export function MaterialGroupSection({
           </Select.Root>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Max length is a preference, not a hard limit. Longer cuts use the smallest board that fits.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            Additional stock lengths
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            {group.customAllowedLengths.map((len) => (
+              <span
+                key={len}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300"
+              >
+                {formatStockLength(len)}
+                <button
+                  type="button"
+                  onClick={() => removeCustomLength(len)}
+                  className="ml-0.5 text-slate-400 hover:text-red-500"
+                  aria-label={`Remove ${formatStockLength(len)} from custom lengths`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={customLenInput}
+                placeholder="e.g. 168"
+                onChange={(e) => setCustomLenInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customLenValid) {
+                    e.preventDefault()
+                    addCustomLength()
+                  }
+                }}
+                className={`w-24 px-2 py-1 text-xs ${fieldClassName}`}
+                aria-label="Custom stock length in inches"
+              />
+              <button
+                type="button"
+                onClick={addCustomLength}
+                disabled={!customLenValid}
+                className="px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Add non-standard lengths (in inches) beyond the spec's defaults. Fractions accepted, e.g. 168 for 14 ft.
           </p>
         </div>
 
@@ -431,7 +563,7 @@ function DraftRow({
           ref={lengthRef}
           type="text"
           inputMode="decimal"
-          placeholder="e.g. 24"
+          placeholder="e.g. 24 or 3 1/2"
           value={draft.length}
           onChange={(e) => onChange({ ...draft, length: e.target.value })}
           onKeyDown={(e) => {

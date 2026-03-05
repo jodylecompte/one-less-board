@@ -30,6 +30,10 @@ export interface MaterialGroup {
   boardSpecId: string
   /** Preferred max board length (inches). Used only when materialType === "board". Default 96 (8 ft). */
   maxLengthPreferenceInches: number
+  /** Kerf override (inches). null = use the board spec's default kerf. */
+  kerfOverrideInches: number | null
+  /** Extra stock lengths (inches) available beyond the board spec's standard allowedLengths. */
+  customAllowedLengths: number[]
   /** Length-based cuts. Used only when materialType === "board". */
   cuts: CutRequirement[]
   /** In-progress cut row. Used only when materialType === "board". */
@@ -69,7 +73,12 @@ export function createBoardGroup(
   overrides?: Partial<
     Pick<
       MaterialGroup,
-      "label" | "isLabelUserDefined" | "boardSpecId" | "maxLengthPreferenceInches"
+      | "label"
+      | "isLabelUserDefined"
+      | "boardSpecId"
+      | "maxLengthPreferenceInches"
+      | "kerfOverrideInches"
+      | "customAllowedLengths"
     >
   >
 ): MaterialGroup {
@@ -81,6 +90,8 @@ export function createBoardGroup(
     materialType: "board",
     boardSpecId,
     maxLengthPreferenceInches: overrides?.maxLengthPreferenceInches ?? DEFAULT_MAX_BOARD_LENGTH_INCHES,
+    kerfOverrideInches: overrides?.kerfOverrideInches ?? null,
+    customAllowedLengths: overrides?.customAllowedLengths ?? [],
     cuts: [],
     draftCut: null,
     sheetPieces: [],
@@ -109,6 +120,8 @@ export function createSheetGroup(
     materialType: "sheet",
     boardSpecId: DEFAULT_BOARD_SPEC_ID,
     maxLengthPreferenceInches: DEFAULT_MAX_BOARD_LENGTH_INCHES,
+    kerfOverrideInches: null,
+    customAllowedLengths: [],
     cuts: [],
     draftCut: null,
     sheetPieces: [],

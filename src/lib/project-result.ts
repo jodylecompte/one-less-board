@@ -120,14 +120,27 @@ export function generateProjectResult(
         groupLabel: group.label,
         boardSpecId: boardSpec?.id,
         boards: [],
-        kerfInches: boardSpec?.kerf ?? 0,
+        kerfInches: group.kerfOverrideInches ?? boardSpec?.kerf ?? 0,
         preferredMaxLengthInches: group.maxLengthPreferenceInches,
         materialType: "board",
       })
       continue
     }
 
-    const boards = optimizeCuts(boardCuts, boardSpec, {
+    // Apply per-group overrides to produce the effective spec
+    const effectiveAllowedLengths =
+      group.customAllowedLengths.length > 0
+        ? [...new Set([...boardSpec.allowedLengths, ...group.customAllowedLengths])].sort(
+            (a, b) => a - b
+          )
+        : boardSpec.allowedLengths
+    const effectiveSpec = {
+      ...boardSpec,
+      allowedLengths: effectiveAllowedLengths,
+      kerf: group.kerfOverrideInches ?? boardSpec.kerf,
+    }
+
+    const boards = optimizeCuts(boardCuts, effectiveSpec, {
       scrap: scrap
         .filter(
           (s): s is Extract<ScrapEntry, { materialType: "board" }> =>
@@ -140,7 +153,7 @@ export function generateProjectResult(
       groupLabel: group.label,
       boardSpecId: boardSpec.id,
       boards,
-      kerfInches: boardSpec.kerf,
+      kerfInches: effectiveSpec.kerf,
       preferredMaxLengthInches: group.maxLengthPreferenceInches,
       materialType: "board",
     })

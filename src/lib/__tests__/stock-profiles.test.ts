@@ -105,12 +105,21 @@ describe("STOCK_PROFILES shape", () => {
     }
   })
 
-  it("contains expected standard profiles", () => {
+  it("contains all expected profiles", () => {
     const ids = STOCK_PROFILES.map((p) => p.id)
+    // 1x series
+    expect(ids).toContain("1x4")
+    expect(ids).toContain("1x6")
+    expect(ids).toContain("1x8")
+    expect(ids).toContain("1x12")
+    // 2x series
     expect(ids).toContain("2x4")
     expect(ids).toContain("2x6")
     expect(ids).toContain("2x8")
-    expect(ids).toContain("1x6")
+    expect(ids).toContain("2x10")
+    expect(ids).toContain("2x12")
+    // specialty
+    expect(ids).toContain("5-4-decking")
     expect(ids).toContain("4-4-hardwood")
     expect(ids).toContain("6-4-hardwood")
   })
