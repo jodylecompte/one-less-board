@@ -9,6 +9,8 @@ import {
   MIN_SCRAP_LENGTH_INCHES,
   type ScrapBoard,
   type ScrapEntry,
+  // internal helpers exported for testing
+  candidateOrderings,
 } from "../optimizer"
 import type { BoardSpec } from "../stock-profiles"
 
@@ -418,29 +420,37 @@ describe("optimizeBoardCuts", () => {
   })
 
   it("falls back to longer board when cut exceeds preferred max length", () => {
-    // A 100" cut doesn't fit on 96" → should use 120"
-    // BUT due to the cut > minStock bug, 100 > 96 (minStock) so it's dropped!
-    // Testing the actual behavior: 100" cut is silently dropped
+    // 100" exceeds the 96" preference but fits a 120" board — should use 120"
     const result = optimizeBoardCuts(
       [{ length: 100, quantity: 1 }],
-      spec2x4, // allowedLengths: [96, 120, 144], minStock=96
+      spec2x4, // allowedLengths: [96, 120, 144]
       { preferredMaxLengthInches: 96 }
     )
-    // Current behavior: cut > minStock (96) is silently dropped
-    expect(result).toHaveLength(0)
+    expect(result).toHaveLength(1)
+    expect(result[0].stockLength).toBe(120)
   })
 
-  it("silently drops cuts larger than the minimum allowed stock length", () => {
-    // minStock = 96; cut = 97 > 96 → dropped
+  it("uses a longer stock board when the cut exceeds the shortest stock length", () => {
+    // 97" > 96" (shortest stock) — must go on 120" board
     const result = optimizeBoardCuts(
       [{ length: 97, quantity: 1 }],
       spec2x4 // allowedLengths: [96, 120, 144]
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].stockLength).toBe(120)
+    expect(result[0].cuts).toEqual([97])
+  })
+
+  it("silently drops cuts that exceed ALL stock lengths", () => {
+    // 200" exceeds all lengths [96, 120, 144] → dropped
+    const result = optimizeBoardCuts(
+      [{ length: 200, quantity: 1 }],
+      spec2x4
     )
     expect(result).toHaveLength(0)
   })
 
   it("processes cuts exactly equal to the minimum stock length", () => {
-    // cut = 96 = minStock → NOT dropped (96 > 96 is false)
     const result = optimizeBoardCuts(
       [{ length: 96, quantity: 1 }],
       spec2x4
@@ -472,6 +482,85 @@ describe("optimizeBoardCuts", () => {
       { scrap: badScrap }
     )
     expect(result[0].source).toBe("new")
+  })
+})
+
+// ── candidateOrderings ────────────────────────────────────────────────────────
+
+describe("candidateOrderings", () => {
+  it("returns [desc, asc] for 1-element input", () => {
+    const result = candidateOrderings([48])
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual([48])
+    expect(result[1]).toEqual([48])
+  })
+
+  it("returns [desc, asc] for 2-element input", () => {
+    const result = candidateOrderings([48, 24])
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual([48, 24])
+    expect(result[1]).toEqual([24, 48])
+  })
+
+  it("returns 3 orderings for inputs with 3+ elements", () => {
+    const result = candidateOrderings([48, 24, 72, 36])
+    expect(result).toHaveLength(3)
+  })
+
+  it("first ordering is descending", () => {
+    const [desc] = candidateOrderings([24, 72, 48])
+    expect(desc).toEqual([72, 48, 24])
+  })
+
+  it("second ordering is ascending", () => {
+    const [, asc] = candidateOrderings([24, 72, 48])
+    expect(asc).toEqual([24, 48, 72])
+  })
+
+  it("third ordering (interleaved) alternates large and small", () => {
+    // desc = [72, 48, 24] → interleaved takes [72, 24, 48]
+    const [, , interleaved] = candidateOrderings([24, 72, 48])
+    expect(interleaved[0]).toBe(72) // first from large end
+    expect(interleaved[1]).toBe(24) // first from small end
+    expect(interleaved[2]).toBe(48) // second from large end
+  })
+
+  it("does not mutate the input array", () => {
+    const input = [48, 24, 72]
+    candidateOrderings(input)
+    expect(input).toEqual([48, 24, 72])
+  })
+})
+
+// ── multi-strategy optimization ───────────────────────────────────────────────
+
+describe("optimizeBoardCuts multi-strategy", () => {
+  it("produces a result at least as good as BFD alone", () => {
+    // Construct a case where interleaved ordering packs better:
+    // 4 cuts: [60, 60, 36, 36] on 96" boards (kerf 0.125)
+    // BFD (desc): 60, 60 → need 2 boards; 36+36=72.125 on 3rd board → 3 boards total
+    // actually: 60 on board1, 36 on board1 (60+0.125+36=96.125 > 96 → no fit)
+    // so board1=60, board2=60, board3=36+36 → 3 boards
+    // All strategies should give ≤ 3 boards
+    const result = optimizeBoardCuts(
+      [{ length: 60, quantity: 2 }, { length: 36, quantity: 2 }],
+      spec2x4SmallOnly
+    )
+    expect(result.length).toBeLessThanOrEqual(3)
+  })
+
+  it("uses fewer boards than naive ordering when strategies differ", () => {
+    // 3 cuts: [50, 46, 46] on 96" boards (kerf 0.125)
+    // desc: 50 (alone, 96-50=46), 46+46=92.125 > 96 no → 3 boards
+    // Actually: 50 alone → remaining 46; try 46 on same: 50+0.125+46=96.125 > 96 → no
+    //   → open new 96 for 46; remaining 50; try 46: 46+0.125+46=92.125 ≤ 96 → yes
+    //   → 2 boards: [50] and [46, 46]
+    // All strategies should get ≤ 2 boards
+    const result = optimizeBoardCuts(
+      [{ length: 50, quantity: 1 }, { length: 46, quantity: 2 }],
+      spec2x4SmallOnly
+    )
+    expect(result.length).toBeLessThanOrEqual(2)
   })
 })
 

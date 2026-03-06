@@ -1,5 +1,21 @@
 # Changelog
 
+## Group 3 — Optimizer Core
+
+### Better waste accounting
+Two improvements to the cutting stock optimizer:
+
+**Bug fix:** Cuts longer than the shortest available stock length were silently dropped even when a longer board would fit (e.g. a 100" cut was discarded when 120" boards were available). Fixed — the optimizer now correctly routes oversized cuts to the smallest board that fits them, and only drops cuts that exceed every allowed length.
+
+**Multi-strategy packing:** The optimizer now tries three cut orderings for the new-board phase and keeps whichever produces the best result:
+- Largest-first (Best Fit Decreasing — the previous single strategy)
+- Smallest-first
+- Interleaved large/small (alternates pulling from each end, which helps pair long cuts with short fillers on the same board)
+
+Winner is chosen by fewest new boards required, then least total stock material consumed.
+
+---
+
 ## Group 2 — Data Management
 
 ### Input persistence

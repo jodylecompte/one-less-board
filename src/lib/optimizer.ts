@@ -220,16 +220,17 @@ function placeCutsOntoBoards(
 }
 
 /**
- * Place unassigned cuts onto new boards from allowedLengths. Same greedy algorithm.
- * Prefers boards ≤ preferredMaxLengthInches when multiple lengths fit; if cut exceeds preferred max, uses smallest that fits.
+ * Place cuts onto new boards from allowedLengths using best-fit-decreasing.
+ * Prefers boards ≤ preferredMaxLengthInches; falls back to smallest that fits.
+ * Cuts that exceed all allowed lengths are silently skipped.
  */
 function placeCutsOntoNewBoards(
-  sortedCuts: number[],
+  orderedCuts: number[],
   allowedLengths: number[],
   kerfInches: number,
   preferredMaxLengthInches?: number
 ): { stockLength: number; cuts: number[] }[] {
-  if (allowedLengths.length === 0 || sortedCuts.length === 0) return []
+  if (allowedLengths.length === 0 || orderedCuts.length === 0) return []
   const preferred = preferredMaxLengthInches ?? Infinity
   const sortedStock = [...allowedLengths].sort((a, b) => {
     const aPrefer = a <= preferred ? 0 : 1
@@ -237,7 +238,6 @@ function placeCutsOntoNewBoards(
     if (aPrefer !== bPrefer) return aPrefer - bPrefer
     return a - b
   })
-  const minStock = Math.min(...allowedLengths)
   const boards: { stockLength: number; cuts: number[] }[] = []
 
   function usedLength(cuts: number[]): number {
@@ -258,8 +258,7 @@ function placeCutsOntoNewBoards(
     return null
   }
 
-  for (const cut of sortedCuts) {
-    if (cut > minStock) continue
+  for (const cut of orderedCuts) {
     let bestBoard: { stockLength: number; cuts: number[] } | null = null
     let bestRemainingAfter = Infinity
     for (const board of boards) {
@@ -275,10 +274,64 @@ function placeCutsOntoNewBoards(
       continue
     }
     const stockLength = shortestStockThatFits(cut)
-    if (stockLength === null) continue
+    if (stockLength === null) continue // cut exceeds all stock lengths
     boards.push({ stockLength, cuts: [cut] })
   }
   return boards
+}
+
+/**
+ * @internal exported for testing
+ * Generate candidate orderings of a cut list to try multiple packing strategies.
+ * Returns up to three orderings: largest-first, smallest-first, and interleaved
+ * (alternates taking from the large and small ends, which helps pair large cuts
+ * with small fillers on the same board).
+ */
+export function candidateOrderings(cuts: number[]): number[][] {
+  const desc = [...cuts].sort((a, b) => b - a)
+  const asc = [...cuts].sort((a, b) => a - b)
+  if (cuts.length <= 2) return [desc, asc]
+
+  const interleaved: number[] = []
+  let lo = 0
+  let hi = desc.length - 1
+  let fromLarge = true
+  while (lo <= hi) {
+    interleaved.push(fromLarge ? desc[lo++] : desc[hi--])
+    fromLarge = !fromLarge
+  }
+  return [desc, asc, interleaved]
+}
+
+/** Compare two new-board results: prefer fewer boards, then less total stock consumed. */
+function isNewBoardResultBetter(
+  a: { stockLength: number; cuts: number[] }[],
+  b: { stockLength: number; cuts: number[] }[]
+): boolean {
+  if (a.length !== b.length) return a.length < b.length
+  const totalA = a.reduce((s, board) => s + board.stockLength, 0)
+  const totalB = b.reduce((s, board) => s + board.stockLength, 0)
+  return totalA < totalB
+}
+
+/**
+ * Run multiple packing strategies on unassigned cuts and return the best result.
+ */
+function bestNewBoardResult(
+  unassigned: number[],
+  allowedLengths: number[],
+  kerfInches: number,
+  preferredMaxLengthInches?: number
+): { stockLength: number; cuts: number[] }[] {
+  if (unassigned.length === 0) return []
+  let best: { stockLength: number; cuts: number[] }[] | null = null
+  for (const ordering of candidateOrderings(unassigned)) {
+    const result = placeCutsOntoNewBoards(ordering, allowedLengths, kerfInches, preferredMaxLengthInches)
+    if (!best || isNewBoardResultBetter(result, best)) {
+      best = result
+    }
+  }
+  return best ?? []
 }
 
 /**
@@ -329,8 +382,8 @@ export function optimizeBoardCuts(
     result.push(toOptimizedBoard(board, "scrap", kerfInches))
   }
 
-  // Phase 2: remaining cuts onto new boards (prefer lengths ≤ preferredMaxLengthInches)
-  const newBoards = placeCutsOntoNewBoards(
+  // Phase 2: remaining cuts onto new boards — try multiple orderings, keep best
+  const newBoards = bestNewBoardResult(
     unassigned,
     allowedLengths,
     kerfInches,
