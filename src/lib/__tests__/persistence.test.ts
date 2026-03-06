@@ -1,10 +1,28 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import {
   serializeGroups,
   parseGroupFromUnknown,
   parseGroupsFromJSON,
+  saveGroupsToStorage,
+  loadGroupsFromStorage,
+  GROUPS_STORAGE_KEY,
 } from "../persistence"
 import { createBoardGroup, createSheetGroup } from "../material-groups"
+
+// Minimal localStorage mock for node environment
+const store: Record<string, string> = {}
+const localStorageMock = {
+  getItem: (key: string) => store[key] ?? null,
+  setItem: (key: string, value: string) => { store[key] = value },
+  removeItem: (key: string) => { delete store[key] },
+  clear: () => { Object.keys(store).forEach((k) => delete store[k]) },
+  length: 0,
+  key: () => null,
+}
+Object.defineProperty(globalThis, "localStorage", {
+  value: localStorageMock,
+  writable: true,
+})
 
 // ── serializeGroups ───────────────────────────────────────────────────────────
 
@@ -182,6 +200,22 @@ describe("parseGroupFromUnknown", () => {
     expect(result!.sheetPieces[0].width).toBe(24)
   })
 
+  it("skips sheetPieces with invalid quantity (zero, negative, float)", () => {
+    const result = parseGroupFromUnknown({
+      id: "g1",
+      label: "t",
+      materialType: "sheet",
+      sheetPieces: [
+        { width: 24, height: 48, quantity: 0 },
+        { width: 24, height: 48, quantity: -1 },
+        { width: 24, height: 48, quantity: 1.5 },
+        { width: 12, height: 12, quantity: 3 },
+      ],
+    })
+    expect(result!.sheetPieces).toHaveLength(1)
+    expect(result!.sheetPieces[0].width).toBe(12)
+  })
+
   it("always clears draftCut and draftSheetPiece regardless of stored value", () => {
     const result = parseGroupFromUnknown({
       id: "g1",
@@ -208,6 +242,42 @@ describe("parseGroupFromUnknown", () => {
     expect(result!.sheetStockWidth).toBe(60)
     expect(result!.sheetStockHeight).toBe(120)
     expect(result!.sheetThickness).toBe('1/2"')
+  })
+})
+
+// ── saveGroupsToStorage / loadGroupsFromStorage ───────────────────────────────
+
+describe("saveGroupsToStorage + loadGroupsFromStorage", () => {
+  beforeEach(() => localStorageMock.clear())
+
+  it("round-trips a group through localStorage", () => {
+    const groups = [createBoardGroup({ boardSpecId: "2x6", kerfOverrideInches: 0.09 })]
+    saveGroupsToStorage(groups)
+    const loaded = loadGroupsFromStorage()
+    expect(loaded).not.toBeNull()
+    expect(loaded![0].boardSpecId).toBe("2x6")
+    expect(loaded![0].kerfOverrideInches).toBe(0.09)
+  })
+
+  it("returns null when nothing is stored", () => {
+    expect(loadGroupsFromStorage()).toBeNull()
+  })
+
+  it("returns null when stored data is invalid JSON", () => {
+    store[GROUPS_STORAGE_KEY] = "not json {"
+    expect(loadGroupsFromStorage()).toBeNull()
+  })
+
+  it("returns null when stored data parses to non-array", () => {
+    store[GROUPS_STORAGE_KEY] = JSON.stringify({ foo: "bar" })
+    expect(loadGroupsFromStorage()).toBeNull()
+  })
+
+  it("strips draft state on save", () => {
+    const group = { ...createBoardGroup(), draftCut: { length: "12", quantity: "2" } }
+    saveGroupsToStorage([group])
+    const loaded = loadGroupsFromStorage()
+    expect(loaded![0].draftCut).toBeNull()
   })
 })
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## Group 2 — Data Management
+
+### Input persistence
+Cut lists and group configuration are now saved to `localStorage` automatically. Your work survives page reloads.
+
+### Import / Export
+Two buttons below "Add material group" let you save your cut plan as a `.json` file and reload it later (or share it). Import validates the file and shows an error message if the file isn't a valid project.
+
+### Undo / Redo
+Undo (Ctrl+Z) and Redo (Ctrl+Y / Ctrl+Shift+Z) are available for destructive actions: removing a material group and deleting individual cuts. Buttons also appear in the header toolbar.
+
+---
+
 ## Group 1 — Input & Configuration
 
 ### More board types
