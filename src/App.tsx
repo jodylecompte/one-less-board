@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   STOCK_PROFILES,
   formatStockLength,
@@ -11,6 +11,12 @@ import {
   createDefaultGroup,
   type MaterialGroup,
 } from "./lib/material-groups";
+import {
+  saveGroupsToStorage,
+  loadGroupsFromStorage,
+  parseGroupsFromJSON,
+  serializeGroups,
+} from "./lib/persistence";
 import {
   generateProjectResult,
   type ProjectResult,
@@ -115,9 +121,76 @@ function saveScrapToStorage(scrap: ScrapEntry[]) {
 }
 
 function App() {
-  const [groups, setGroups] = useState<MaterialGroup[]>(() => [
-    createDefaultGroup(),
-  ]);
+  // ── Groups state with undo/redo ─────────────────────────────────────────
+  const [groups, setGroupsRaw] = useState<MaterialGroup[]>(
+    () => loadGroupsFromStorage() ?? [createDefaultGroup()]
+  );
+  const [undoPast, setUndoPast] = useState<MaterialGroup[][]>([]);
+  const [undoFuture, setUndoFuture] = useState<MaterialGroup[][]>([]);
+
+  /** Update groups, persist, and clear redo stack. */
+  const setGroups = useCallback(
+    (next: MaterialGroup[] | ((prev: MaterialGroup[]) => MaterialGroup[])) => {
+      setGroupsRaw((prev) => {
+        const value = typeof next === "function" ? next(prev) : next;
+        saveGroupsToStorage(value);
+        return value;
+      });
+      setUndoFuture([]);
+    },
+    []
+  );
+
+  /** Snapshot the current groups into the undo stack before a destructive action. */
+  const snapshotForUndo = useCallback(() => {
+    setUndoPast((prev) => [...prev, groups]);
+    setUndoFuture([]);
+  }, [groups]);
+
+  const canUndo = undoPast.length > 0;
+  const canRedo = undoFuture.length > 0;
+
+  const undo = useCallback(() => {
+    if (undoPast.length === 0) return;
+    const previous = undoPast[undoPast.length - 1];
+    setUndoPast((p) => p.slice(0, -1));
+    setUndoFuture((f) => [groups, ...f]);
+    setGroupsRaw(previous);
+    saveGroupsToStorage(previous);
+  }, [undoPast, groups]);
+
+  const redo = useCallback(() => {
+    if (undoFuture.length === 0) return;
+    const next = undoFuture[0];
+    setUndoFuture((f) => f.slice(1));
+    setUndoPast((p) => [...p, groups]);
+    setGroupsRaw(next);
+    saveGroupsToStorage(next);
+  }, [undoFuture, groups]);
+
+  // Keep refs so keyboard handler never goes stale
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  const redoRef = useRef(redo);
+  redoRef.current = redo;
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.shiftKey && e.key === "z") {
+        e.preventDefault();
+        undoRef.current();
+      }
+      if (mod && (e.key === "y" || (e.shiftKey && e.key === "z"))) {
+        e.preventDefault();
+        redoRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // ── Group CRUD ───────────────────────────────────────────────────────────
   const [projectResult, setProjectResult] = useState<ProjectResult | null>(
     null,
   );
@@ -128,6 +201,8 @@ function App() {
   const [scrapModalOpen, setScrapModalOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
   const [lastRunScrapNote, setLastRunScrapNote] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const setScrapInventory = (
     next: ScrapEntry[] | ((prev: ScrapEntry[]) => ScrapEntry[]),
@@ -151,9 +226,44 @@ function App() {
   };
 
   const removeGroup = (id: string) => {
-    setGroups((prev) =>
-      prev.length <= 1 ? prev : prev.filter((g) => g.id !== id),
-    );
+    if (groups.length <= 1) return;
+    snapshotForUndo();
+    setGroups((prev) => prev.filter((g) => g.id !== id));
+  };
+
+  // ── Import / Export ──────────────────────────────────────────────────────
+  const exportProject = () => {
+    const json = JSON.stringify(serializeGroups(groups), null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cut-plan.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target?.result;
+        if (typeof text !== "string") throw new Error("Could not read file.");
+        const parsed = JSON.parse(text) as unknown;
+        const imported = parseGroupsFromJSON(parsed);
+        if (!imported) throw new Error("File does not contain valid project data.");
+        snapshotForUndo();
+        setGroups(imported);
+        setImportError(null);
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : "Import failed.");
+      }
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-imported
+    e.target.value = "";
   };
 
   const hasCuts = groups.some(
@@ -281,7 +391,33 @@ function App() {
                 Save one board today. Have one tomorrow.
               </p>
             </div>
-            <div className="flex items-center justify-center lg:justify-start">
+            <div className="flex items-center justify-center lg:justify-start gap-1">
+              <button
+                type="button"
+                onClick={undo}
+                disabled={!canUndo}
+                className="inline-flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700/60 p-2.5 min-h-[44px] min-w-[44px] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/60 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                aria-label="Undo"
+                title="Undo (Ctrl+Z)"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7v6h6" />
+                  <path d="M3 13a9 9 0 1 0 2.6-6.36L3 9" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={redo}
+                disabled={!canRedo}
+                className="inline-flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700/60 p-2.5 min-h-[44px] min-w-[44px] text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/60 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                aria-label="Redo"
+                title="Redo (Ctrl+Y)"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 7v6h-6" />
+                  <path d="M21 13a9 9 0 1 1-2.6-6.36L21 9" />
+                </svg>
+              </button>
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -337,6 +473,7 @@ function App() {
                 onUpdateGroup={(updater) => updateGroup(group.id, updater)}
                 onRemove={() => removeGroup(group.id)}
                 canRemove={groups.length > 1}
+                onBeforeDestructiveAction={snapshotForUndo}
               />
             ))}
           </div>
@@ -358,6 +495,46 @@ function App() {
             </svg>
             Add material group
           </button>
+
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <button
+              type="button"
+              onClick={exportProject}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-100 dark:bg-slate-700/60 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/60 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              title="Export project as JSON"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={() => { setImportError(null); importInputRef.current?.click(); }}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-100 dark:bg-slate-700/60 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600/60 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              title="Import project from JSON"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Import
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportFile}
+              aria-label="Import project JSON file"
+            />
+            {importError && (
+              <p className="text-xs text-red-600 dark:text-red-400">{importError}</p>
+            )}
+          </div>
         </div>
 
         <div className="mt-8 lg:mt-0 print:mt-0 space-y-4">

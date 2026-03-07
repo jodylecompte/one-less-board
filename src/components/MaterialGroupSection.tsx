@@ -27,11 +27,13 @@ export function MaterialGroupSection({
   onUpdateGroup,
   onRemove,
   canRemove,
+  onBeforeDestructiveAction,
 }: {
   group: MaterialGroup
   onUpdateGroup: (updater: (g: MaterialGroup) => MaterialGroup) => void
   onRemove: () => void
   canRemove: boolean
+  onBeforeDestructiveAction?: () => void
 }) {
   const currentSpec = STOCK_PROFILES.find((p) => p.id === group.boardSpecId)
   const defaultKerf = currentSpec?.kerf ?? 0.125
@@ -117,7 +119,7 @@ export function MaterialGroupSection({
           {canRemove && (
             <button
               type="button"
-              onClick={onRemove}
+              onClick={() => { onBeforeDestructiveAction?.(); onRemove(); }}
               className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
               aria-label="Remove material group"
             >
@@ -293,7 +295,11 @@ export function MaterialGroupSection({
           </p>
         </div>
 
-        <CutListTable group={group} onUpdateGroup={onUpdateGroup} />
+        <CutListTable
+          group={group}
+          onUpdateGroup={onUpdateGroup}
+          onBeforeDeleteCut={onBeforeDestructiveAction}
+        />
       </div>
     </section>
   )
@@ -302,9 +308,11 @@ export function MaterialGroupSection({
 function CutListTable({
   group,
   onUpdateGroup,
+  onBeforeDeleteCut,
 }: {
   group: MaterialGroup
   onUpdateGroup: (updater: (g: MaterialGroup) => MaterialGroup) => void
+  onBeforeDeleteCut?: () => void
 }) {
   const updateCut = (
     oldLength: number,
@@ -327,6 +335,7 @@ function CutListTable({
   }
 
   const deleteCut = (length: number, materialType: "board" | "sheet" = "board") => {
+    onBeforeDeleteCut?.()
     onUpdateGroup((g) => ({
       ...g,
       cuts: g.cuts.filter((c) => !(c.length === length && (c.materialType ?? "board") === materialType)),

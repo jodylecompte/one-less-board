@@ -8,7 +8,6 @@ import {
   optimize,
   MIN_SCRAP_LENGTH_INCHES,
   type ScrapBoard,
-  type ScrapSheet,
   type ScrapEntry,
 } from "../optimizer"
 import type { BoardSpec } from "../stock-profiles"
