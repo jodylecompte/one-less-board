@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   STOCK_PROFILES,
   formatStockLength,
-  DEFAULT_KERF_INCHES,
-  DEFAULT_MAX_BOARD_LENGTH_INCHES,
 } from "./lib/stock-profiles";
 import { mergeScrapEntries, type ScrapEntry } from "./lib/optimizer";
 import {
@@ -580,11 +578,7 @@ function App() {
                 </span>
               </label>
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Assumptions: {DEFAULT_KERF_INCHES}" kerf (1/8″) per cut, max board
-              length preference defaults to{" "}
-              {DEFAULT_MAX_BOARD_LENGTH_INCHES / 12} ft.
-            </p>
+
             {!canGenerate && generationErrors.length > 0 && (
               <ul className="space-y-1 text-sm text-amber-700 dark:text-amber-300">
                 {generationErrors.map((msg) => (
