@@ -21,6 +21,13 @@ export type StockProfile = BoardSpec
 /** Stock profiles define what boards the optimizer may use (constraint, not quantities) */
 export const STOCK_PROFILES: BoardSpec[] = [
   {
+    id: "1x2",
+    name: "1×2 dimensional",
+    materialType: "board",
+    allowedLengths: [96, 120, 144],
+    kerf: 0.125,
+  },
+  {
     id: "1x4",
     name: "1×4 dimensional",
     materialType: "board",
@@ -44,6 +51,13 @@ export const STOCK_PROFILES: BoardSpec[] = [
   {
     id: "1x12",
     name: "1×12 dimensional",
+    materialType: "board",
+    allowedLengths: [96, 120, 144],
+    kerf: 0.125,
+  },
+  {
+    id: "2x2",
+    name: "2×2 dimensional",
     materialType: "board",
     allowedLengths: [96, 120, 144],
     kerf: 0.125,
@@ -81,6 +95,13 @@ export const STOCK_PROFILES: BoardSpec[] = [
     name: "2×12 dimensional",
     materialType: "board",
     allowedLengths: [96, 120, 144],
+    kerf: 0.125,
+  },
+  {
+    id: "4x4",
+    name: "4×4 dimensional",
+    materialType: "board",
+    allowedLengths: [96, 120, 144, 192],
     kerf: 0.125,
   },
   {
@@ -136,15 +157,18 @@ export function shortNominalName(fullName: string): string {
 
 /** Order for sorting nominal sizes small → large (material size). */
 export const NOMINAL_SIZE_ORDER: string[] = [
+  "1x2",
   "1x4",
   "1x6",
   "1x8",
   "1x12",
+  "2x2",
   "2x4",
   "2x6",
   "2x8",
   "2x10",
   "2x12",
+  "4x4",
   "5-4-decking",
   "4-4-hardwood",
   "6-4-hardwood",
